@@ -105,6 +105,7 @@ def mps_ops_grad_modifier(ops):
         'equal': [torch.float16, torch.float32],
         # 'float' object is not iterable
         'item': [torch.float16, torch.float32],
+        'nn.functional.avg_pool2d': [torch.float16],
         # "mse_backward_cpu_out" not implemented for 'Half'
         'nn.functional.mse_loss': [torch.float16],
         # "smooth_l1_backward_cpu_out" not implemented for 'Half'
@@ -576,6 +577,7 @@ def mps_ops_modifier(ops):
         'nn.functional.max_unpool1dgrad': None,
         'nn.functional.max_unpool2dgrad': None,
         'nn.functional.max_unpool3dgrad': None,
+        'nn.functional.avg_pool2d': [torch.float16],
         'nn.functional.avg_pool3d': None,
         'nn.functional.ctc_loss': None,
         'nn.functional.embedding_bag': None,
