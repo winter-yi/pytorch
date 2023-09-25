@@ -58,14 +58,14 @@ class AOTInductorModelRunner:
     @classmethod
     def compile(cls, model, example_inputs, options=None, constraints=None):
         # The exact API is subject to change
-        so_path, exported = torch._export.aot_compile(
+        so_path, call_spec = torch._export.aot_compile(
             model,
             example_inputs,
             options=options,
             constraints=constraints,
             remove_runtime_assertions=True,
         )
-        return so_path, exported
+        return so_path, call_spec
 
     @classmethod
     def load(cls, so_path, example_inputs):
@@ -94,20 +94,20 @@ class AOTInductorModelRunner:
         return optimized
 
     @classmethod
-    def run_compiled(cls, optimized, exported, example_inputs):
+    def run_compiled(cls, optimized, call_spec, example_inputs):
         flat_example_inputs = fx_pytree.tree_flatten_spec(
-            (example_inputs, {}), exported.call_spec.in_spec
+            (example_inputs, {}), call_spec.in_spec
         )
         output_tensors = optimized(flat_example_inputs)
-        return pytree.tree_unflatten(output_tensors, exported.call_spec.out_spec)
+        return pytree.tree_unflatten(output_tensors, call_spec.out_spec)
 
     @classmethod
     def run(cls, model, example_inputs, options=None, constraints=None):
-        so_path, exported = AOTInductorModelRunner.compile(
+        so_path, call_spec = AOTInductorModelRunner.compile(
             model, example_inputs, options=options, constraints=constraints
         )
         optimized = AOTInductorModelRunner.load(so_path, example_inputs)
-        return AOTInductorModelRunner.run_compiled(optimized, exported, example_inputs)
+        return AOTInductorModelRunner.run_compiled(optimized, call_spec, example_inputs)
 
     @classmethod
     def run_multiple(
@@ -117,7 +117,7 @@ class AOTInductorModelRunner:
         options=None,
         constraints=None,
     ):
-        so_path, exported = AOTInductorModelRunner.compile(
+        so_path, call_spec = AOTInductorModelRunner.compile(
             model,
             list_example_inputs[0],
             options=options,
@@ -127,7 +127,7 @@ class AOTInductorModelRunner:
         list_output_tensors = []
         for example_inputs in list_example_inputs:
             list_output_tensors.append(
-                AOTInductorModelRunner.run_compiled(optimized, exported, example_inputs)
+                AOTInductorModelRunner.run_compiled(optimized, call_spec, example_inputs)
             )
         return list_output_tensors
 
@@ -756,7 +756,7 @@ class AOTInductorTestsTemplate:
         with torch.cuda.device(0), config.patch(
             "aot_inductor.abi_compatible", self.abi_compatible
         ):
-            so_path, exported = AOTInductorModelRunner.compile(
+            so_path, call_spec = AOTInductorModelRunner.compile(
                 model=Model(w1.cuda(0), w2.cuda(0)),
                 example_inputs=tuple(t.cuda(0) for t in inputs),
             )
@@ -767,7 +767,7 @@ class AOTInductorTestsTemplate:
                 example_inputs = tuple(t.cuda(i) for t in inputs)
                 optimized = AOTInductorModelRunner.load(so_path, example_inputs)
                 result_cuda = AOTInductorModelRunner.run_compiled(
-                    optimized, exported, example_inputs
+                    optimized, call_spec, example_inputs
                 )
             self.assertTrue(same(result_cpu, result_cuda.cpu()))
 

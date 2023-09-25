@@ -27,7 +27,7 @@ from torch._decomp import core_aten_decompositions, get_decompositions
 from torch._dispatch.python import enable_python_dispatcher
 from torch._dynamo.exc import UserError, UserErrorType
 from torch._dynamo.source import ConstantSource
-from torch._export.exported_program import ModuleCallEntry, ModuleCallSignature
+from torch._export.exported_program import ModuleCallEntry, ModuleCallSignature, CallSpec
 from torch._export.passes.collect_tracepoints_pass import CollectTracepointsPass
 from torch._functorch.aot_autograd import aot_export_module
 from torch._functorch.eager_transforms import functionalize
@@ -67,32 +67,14 @@ from .passes.remove_runtime_assertions import _RemoveRuntimeAssertionsPass
 from .wrappers import _wrap_submodules
 
 
-def export__RC__(
+def _process_dynamic_shapes(
     f: Callable,
     args: Tuple[Any, ...],
     kwargs: Optional[Dict[str, Any]] = None,
-    *,
     dynamic_shapes: Optional[Dict[str, Any]] = None,
-) -> ExportedProgram:
-    """
-    API for exporting with dynamic shape specifications instead of constraints.
-    It should be considered "release candidate" (RC), meant to replace `export`.
-
-    Here, `dynamic_shapes` is expected to be a (possibly partial) dict from
-    argument names of `f` to dynamic shape specifications, as follows:
-    - The dynamic shape of a tensor argument can be specified as:
-      - Either a dict from dynamic dimension indices to Dim types. It is not
-        required to include static dimension indices in this dict, but when
-        they are, they should be mapped to None.
-      - Or a tuple of Dim types or None. The Dim types correspond to dynamic
-        dimensions, whereas static dimensions are denoted by None.
-    - Arguments that are dicts or tuples of tensors are recursively specified
-      by using mappings or sequences of contained specifications.
-
-    See `export` for documentation of `f`, `args`, `kwargs` and return.
-    """
+) -> Optional[List[Constraint]]:
     if dynamic_shapes is None or len(dynamic_shapes) == 0:
-        return export(f, args, kwargs)
+        return None
 
     kwargs = kwargs if kwargs is not None else {}
 
@@ -228,7 +210,35 @@ def export__RC__(
         else:
             constraints.append(primary)
 
-    return _export(f, args, kwargs, constraints=constraints)
+    return constraints
+
+
+def export__RC__(
+    f: Callable,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]] = None,
+    *,
+    dynamic_shapes: Optional[Dict[str, Any]] = None,
+) -> ExportedProgram:
+    """
+    API for exporting with dynamic shape specifications instead of constraints.
+    It should be considered "release candidate" (RC), meant to replace `export`.
+
+    Here, `dynamic_shapes` is expected to be a (possibly partial) dict from
+    argument names of `f` to dynamic shape specifications, as follows:
+    - The dynamic shape of a tensor argument can be specified as:
+      - Either a dict from dynamic dimension indices to Dim types. It is not
+        required to include static dimension indices in this dict, but when
+        they are, they should be mapped to None.
+      - Or a tuple of Dim types or None. The Dim types correspond to dynamic
+        dimensions, whereas static dimensions are denoted by None.
+    - Arguments that are dicts or tuples of tensors are recursively specified
+      by using mappings or sequences of contained specifications.
+
+    See `export` for documentation of `f`, `args`, `kwargs` and return.
+    """
+    constraints = _process_dynamic_shapes(f, args, kwargs, dynamic_shapes)
+    return export(f, args, kwargs, constraints=constraints)
 
 
 def dynamic_dim(t: torch.Tensor, index: int, debug_name: Optional[str] = None):
@@ -449,8 +459,7 @@ def _normalize_nn_module_stack(gm_torch_level, root_cls):
                     for key, (path, ty) in nn_module_stack.items()
                 }
 
-
-def export(
+def _export_to_torch_ir(
     f: Callable,
     args: Tuple[Any, ...],
     kwargs: Optional[Dict[str, Any]] = None,
@@ -486,23 +495,7 @@ def _export(
 ) -> ExportedProgram:
     """
     Traces either an nn.Module's forward function or just a callable with PyTorch
-    operations inside and produce a ExportedProgram.
-
-    Args:
-        m: the `nn.Module` or callable to trace.
-
-        args: example positional inputs.
-
-        kwargs: optional example keyword inputs.
-
-        constraints: A optional list of constraints on the dynamic arguments specifying
-            their possible range of their shapes
-
-        preserve_module_call_signature: A list of submodule paths for which the original
-            calling conventions are preserved as metadata.
-
-    Returns:
-        An ExportedProgram containing the traced method.
+    operations inside and produce a torch.fx.GraphModule in torch IR.
     """
     constraints = constraints or []
     kwargs = kwargs or {}
@@ -551,6 +544,48 @@ def _export(
                 f"Consider annotating your code using constrain_as_*(). {str(e)}",
                 case_name="constrain_as_size_example",
             )
+
+    gm_torch_level.meta["module_call_specs"] = module_call_specs
+    return gm_torch_level
+
+def export(
+    f: Callable,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]] = None,
+    constraints: Optional[List[Constraint]] = None,
+    *,
+    preserve_module_call_signature: Tuple[str, ...] = (),
+) -> ExportedProgram:
+    """
+    Traces either an nn.Module's forward function or just a callable with PyTorch
+    operations inside and produce a ExportedProgram.
+
+    Args:
+        m: the `nn.Module` or callable to trace.
+
+        args: example positional inputs.
+
+        kwargs: optional example keyword inputs.
+
+        constraints: A optional list of constraints on the dynamic arguments specifying
+            their possible range of their shapes
+
+        preserve_module_call_signature: A list of submodule paths for which the original
+            calling conventions are preserved as metadata.
+
+    Returns:
+        An ExportedProgram containing the traced method.
+    """
+    constraints = constraints or []
+    kwargs = kwargs or {}
+
+    gm_torch_level = _export_to_torch_ir(
+        f,
+        args,
+        kwargs,
+        constraints,
+        preserve_module_call_signature=preserve_module_call_signature
+    )
 
     params_buffers: Dict[str, Union[torch.Tensor, torch.nn.Parameter]] = {}
     for name, param in gm_torch_level.named_parameters(remove_duplicate=False):
@@ -605,6 +640,7 @@ def _export(
 
     # Fix the graph output signature to be tuple if scalar
     out_spec = orig_out_spec = gm_torch_level._out_spec
+    assert out_spec is not None
     # aot_export expect the return type to always be a tuple.
     if out_spec.type not in (list, tuple):
         out_spec = pytree.TreeSpec(tuple, None, [out_spec])
@@ -728,7 +764,10 @@ def _export(
         _replace_param_buffer_names(param_buffer_table, export_graph_signature)
         params_buffers = {param_buffer_table.get(name, name): tensor for name, tensor in params_buffers.items()}
 
-    module_call_signatures = {fqn: ModuleCallSignature(inputs=[], outputs=[], **specs) for fqn, specs in module_call_specs.items()}
+    module_call_signatures = {
+        fqn: ModuleCallSignature(inputs=[], outputs=[], **specs)
+        for fqn, specs in gm_torch_level.meta["module_call_specs"].items()
+    }
 
     if len(preserve_module_call_signature) > 0:
         res = CollectTracepointsPass(module_call_signatures)(gm)
@@ -840,7 +879,7 @@ def aot_compile(
     dynamic_shapes: Optional[Dict[str, Any]] = None,
     options: Optional[Dict[str, Any]] = None,
     remove_runtime_assertions: bool = False,
-) -> Tuple[str, ExportedProgram]:
+) -> str:
     """
     Note: this function is not stable yet
 
@@ -866,12 +905,8 @@ def aot_compile(
 
         options: A dictionary of options to control inductor
 
-        remove_runtime_assertions: Whether the runtime assertion fx nodes
-            (and the related fx nodes) inserted by export should be removed
-            from the graph before running _inductor.aot_compile.
-
     Returns:
-        Path to the generated shared library, and the exported program
+        Path to the generated shared library
     """
     if constraints is not None:
         warnings.warn(
@@ -881,59 +916,20 @@ def aot_compile(
 
     from torch._inductor.decomposition import select_decomp_table
 
-    global DECOMP_TABLE
-    DECOMP_TABLE = select_decomp_table()
-    if constraints is not None:
-        ep = export(f, args, kwargs, constraints)
-    else:
-        ep = export__RC__(f, args, kwargs, dynamic_shapes=dynamic_shapes)
+    if constraints is None:
+        constraints = _process_dynamic_shapes(f, args, kwargs, dynamic_shapes)
+    gm = _export_to_torch_ir(f, args, kwargs, constraints)
+    flat_example_inputs, _ = pytree.tree_flatten(combine_args_kwargs(args, kwargs))
+    gm.graph.set_codegen(torch.fx.CodeGen())  # type: ignore[attr-defined]
 
-    if remove_runtime_assertions:
-        ep = ep._transform(_RemoveRuntimeAssertionsPass())
-
-    # Reset the global value
-    DECOMP_TABLE = core_aten_decompositions()
-
-    flat_example_inputs = fx_pytree.tree_flatten_spec(
-        combine_args_kwargs(args, kwargs), ep.call_spec.in_spec  # type: ignore[arg-type]
-    )
-
-    unlifted_module = ep.module()
-    unlifted_module.graph.set_codegen(torch.fx.CodeGen())  # type: ignore[attr-defined]
-    unlifted_module.recompile()
     options = (
-        {"from_export": True}
+        {"freezing": True}
         if options is None
-        else {**options, "from_export": True}
+        else {**options, "freezing": True}
     )
-    so_path = torch._inductor.aot_compile(unlifted_module, flat_example_inputs, options)  # type: ignore[arg-type]
+    with torch.no_grad():
+        so_path = torch._inductor.aot_compile(gm, flat_example_inputs, options)  # type: ignore[arg-type]
 
-    user_inputs = []
-    user_outputs = []
-    for node in unlifted_module.graph.nodes:
-        if node.op == "placeholder":
-            user_inputs.append(node.name)
-        elif node.op == "output":
-            user_outputs = [arg.name for arg in node.args[0]]
+    call_spec = CallSpec(gm._in_spec, gm._out_spec)
 
-    unlifted_ep = ExportedProgram(
-        unlifted_module,
-        unlifted_module.graph,
-        ExportGraphSignature(
-            parameters=[],
-            buffers=[],
-            user_inputs=user_inputs,
-            user_outputs=user_outputs,
-            inputs_to_parameters={},
-            inputs_to_buffers={},
-            buffers_to_mutate={},
-            backward_signature=None,
-        ),
-        call_spec=copy.deepcopy(ep.call_spec),
-        state_dict={},
-        range_constraints=copy.deepcopy(ep.range_constraints),
-        equality_constraints=copy.deepcopy(ep.equality_constraints),
-        module_call_graph=ep.module_call_graph,
-    )
-
-    return so_path, unlifted_ep
+    return so_path, call_spec

@@ -2716,7 +2716,7 @@ def create_runtime_wrapper(
                     continue
                 if hasattr(t, '_dynamo_weak_dynamic_indices'):
                     t._dynamo_weak_dynamic_indices |= o.dynamic_dims
-                else:
+                elif isinstance(t, torch.Tensor):
                     t._dynamo_weak_dynamic_indices = o.dynamic_dims.copy()
 
         return ret_outs
