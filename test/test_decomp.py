@@ -463,6 +463,7 @@ core_backward_failures = {
     skip('unfold_copy'),  # slow: fails with --timeout=360 secs
     skip('xlogy'),  # slow: fails with --timeout=360 secs
     xfail('zero_'),
+    skip('_upsample_bilinear2d_aa'),  # too slow
 }
 
 

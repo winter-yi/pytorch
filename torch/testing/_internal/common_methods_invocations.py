@@ -4310,6 +4310,17 @@ def sample_inputs_interpolate(mode, self, device, dtype, requires_grad, **kwargs
                                   None, 0.6, mode, align_corners,
                                   recompute_scale_factor=recompute_scale_factor)
 
+            if mode in ('bilinear', 'bicubic'):
+                if device == "cpu" and dtype in (torch.bfloat16, ):
+                    # skiping torch.bfloat16 dtype as compute_indices_weights_aa is not implemented for BFloat16 for CPU
+                    continue
+                yield SampleInput(
+                    make_arg(shape(D, rank)),
+                    shape(S, rank, False), None, mode, align_corners,
+                    antialias=True
+                )
+
+
 def sample_inputs_upsample(mode, self, device, dtype, requires_grad, **kwargs):
     N, C = 2, 3
     D = 4
@@ -12982,8 +12993,6 @@ op_db: List[OpInfo] = [
            skips=(
                DecorateInfo(unittest.expectedFailure, 'TestJit', 'test_variant_consistency_jit'),
                DecorateInfo(unittest.expectedFailure, 'TestDTensorOps', 'test_dtensor_op_db'),
-               DecorateInfo(unittest.expectedFailure, 'TestEagerFusionOpInfo', 'test_aot_autograd_symbolic_exhaustive'),
-               DecorateInfo(unittest.expectedFailure, 'TestInductorOpInfo', 'test_comprehensive'),
                DecorateInfo(unittest.expectedFailure, 'TestMathBits', 'test_neg_view'),
            )),
     OpInfo(
