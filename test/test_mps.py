@@ -652,6 +652,7 @@ def mps_ops_modifier(ops):
         'to': None,
         'to_sparse': None,
         'unique': None,
+        'unravel_index': None,
         'vdot': None,
         'segment_reduce_': None,
         '_upsample_bilinear2d_aa': None,
