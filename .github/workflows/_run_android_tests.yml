@@ -68,6 +68,8 @@ jobs:
           max_attempts: 3
           retry_wait_seconds: 90
           command: |
+            set -eux
+
             # Install NDK 21 after GitHub update
             # https://github.com/actions/virtual-environments/issues/5595
             ANDROID_SDK_ROOT="${ANDROID_ROOT}/sdk"
@@ -92,6 +94,8 @@ jobs:
 
       - name: Build PyTorch Android
         run: |
+          set -eux
+
           echo "CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname "$(which conda)")/../"}" >> "${GITHUB_ENV}"
           ${CONDA_RUN} ./scripts/build_pytorch_android.sh "${SUPPORTED_ABI}"
 
