@@ -97,7 +97,7 @@ jobs:
           set -eux
 
           echo "CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname "$(which conda)")/../"}" >> "${GITHUB_ENV}"
-          ${CONDA_RUN} ./scripts/build_pytorch_android.sh "${SUPPORTED_ABI}"
+          ${CONDA_RUN} ./scripts/build_pytorch_android.sh "${SUPPORT_ABI}"
 
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@v2
