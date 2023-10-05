@@ -41,13 +41,13 @@ jobs:
             num_shards: 1,
             runner: "ubuntu-20.04-16x"
             use_lite_interpreter: 1,
-            support_abi: ${{ inputs.support_abi || "armeabi-v7a,arm64-v8a,x86,x86_64" }},
+            support_abi: ${{ inputs.support_abi || 'armeabi-v7a,arm64-v8a,x86,x86_64' }},
           },
           { config: "default",
             shard: 1,
             num_shards: 1,
             runner: "ubuntu-20.04-16x"
             use_lite_interpreter: 0,
-            support_abi: ${{ inputs.support_abi || "armeabi-v7a,arm64-v8a,x86,x86_64" }},
+            support_abi: ${{ inputs.support_abi || 'armeabi-v7a,arm64-v8a,x86,x86_64' }},
           },
         ]}
