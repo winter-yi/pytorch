@@ -17,13 +17,8 @@ on:
       - .github/workflows/build-android-binaries.yml
       - .github/workflows/_run_android_tests.yml
       - android/**
-  # NB: We can use this workflow dispatch to test and build iOS binaries manually
+  # NB: We can use this workflow dispatch to test and build the binaries manually
   workflow_dispatch:
-    inputs:
-      support_abi:
-        description: "Specify the list of supported ABI?"
-        type: string
-        default: "armeabi-v7a,arm64-v8a,x86,x86_64"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}-${{ github.event_name == 'workflow_dispatch' }}
@@ -41,13 +36,13 @@ jobs:
             num_shards: 1,
             runner: "ubuntu-20.04-16x",
             use_lite_interpreter: 1,
-            support_abi: ${{ inputs.support_abi || "armeabi-v7a,arm64-v8a,x86,x86_64" }},
+            support_abi: "armeabi-v7a,arm64-v8a,x86,x86_64",
           },
           { config: "default",
             shard: 1,
             num_shards: 1,
             runner: "ubuntu-20.04-16x",
             use_lite_interpreter: 0,
-            support_abi: ${{ inputs.support_abi || "armeabi-v7a,arm64-v8a,x86,x86_64" }},
+            support_abi: "armeabi-v7a,arm64-v8a,x86,x86_64",
           },
         ]}
