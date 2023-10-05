@@ -1339,9 +1339,16 @@ def method_to_operator(method):
         op = getattr(operator, method_attr)
     return op
 
-def cast_symbool_to_symint_guardless(symbool: torch.SymBool) -> torch.SymInt:
-    int_sym = sympy.Piecewise((1, symbool.node.expr), (0, True))
-    return symbool.node.shape_env.create_symintnode(int_sym, hint=int(symbool.node.require_hint()))
+
+def create_symint_from_symbool_guardless(maybe_symbool):
+    if isinstance(maybe_symbool, bool):
+        return int(maybe_symbool)
+
+    int_sym = sympy.Piecewise((1, maybe_symbool.node.expr), (0, True))
+    return maybe_symbool.node.shape_env.create_symintnode(
+        int_sym, hint=int(maybe_symbool.node.require_hint())
+    )
+
 
 SYMPY_INTERP = {
     'Abs': operator.abs,
@@ -1359,7 +1366,7 @@ SYMPY_INTERP = {
     'IsNonOverlappingAndDenseIndicator': eval_is_non_overlapping_and_dense,
     'floor': math.floor,
     'ceiling': math.ceil,
-    'cast_symbool_to_symint_guardless': cast_symbool_to_symint_guardless,
+    'create_symint_from_symbool_guardless': create_symint_from_symbool_guardless,
 }
 
 always_float_magic_methods = {"truediv", "sym_float", "sym_sqrt", "pow"}

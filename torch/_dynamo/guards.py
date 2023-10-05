@@ -679,6 +679,20 @@ class GuardBuilder(GuardBuilderBase):
         for shape_guard in guards:
             self._produce_guard_code(guard, [shape_guard], shape_env=True)
 
+        def _propagate_symbool_guard_to_outer_shape_env(guards):
+            out_shape_env_guard_exprs = [
+                guard_expr
+                for guard_expr in guards
+                if "create_symint_from_symbool_guardless" in guard_expr
+            ]
+
+            assert all(
+                eval(guard_expr, self.scope, SYMPY_INTERP)
+                for guard_expr in out_shape_env_guard_exprs
+            )
+
+        _propagate_symbool_guard_to_outer_shape_env(guards)
+
     def TENSOR_MATCH(self, guard: Guard, value=None):
         if guard.is_nn_module():
             self.ID_MATCH(guard)

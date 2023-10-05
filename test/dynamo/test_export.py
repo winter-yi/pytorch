@@ -3268,10 +3268,10 @@ def forward(self, x):
                         if "L['pred']" in code
                     ]
                     self.assertEqual(guard_code_on_predicate, exp_guard_code[i])
-                    outter_shape_env_guards = [
+                    outer_shape_env_guards = [
                         str(guard.expr) for guard in shape_env.guards
                     ]
-                    self.assertEqual(outter_shape_env_guards, exp_shape_env_guards[i])
+                    self.assertEqual(outer_shape_env_guards, exp_shape_env_guards[i])
 
         true_graph = """\
 class GraphModule(torch.nn.Module):
@@ -3287,18 +3287,29 @@ class GraphModule(torch.nn.Module):
         cos = arg1.cos();  arg1 = None
         return pytree.tree_unflatten([cos], self._out_spec)
 """
-        true_guard_code = ["cast_symbool_to_symint_guardless(L['pred']) == 1"]
+        true_guard_code = ["create_symint_from_symbool_guardless(L['pred']) == 1"]
         false_guard_code = [
-            "Ne(cast_symbool_to_symint_guardless(L['pred']), 1)",
-            "-9223372036854775808 <= cast_symbool_to_symint_guardless(L['pred'])",
+            "Ne(create_symint_from_symbool_guardless(L['pred']), 1)",
+            "-9223372036854775808 <= create_symint_from_symbool_guardless(L['pred'])",
         ]
         test_symbool_guards(
             f,
             [3, 3, 4, 5],
             [true_graph, true_graph, false_graph, false_graph],
             [true_guard_code, true_guard_code, false_guard_code, false_guard_code],
-            # Outter shape env should have no guards in it because we never specialize on the outter symbool.
-            [[], [], [], []],
+            [
+                ["Eq(Piecewise((1, Eq(s0, 3)), (0, True)), 1)"],
+                ["Eq(Piecewise((1, Eq(s0, 3)), (0, True)), 1)"],
+                [
+                    "Eq(Piecewise((1, Eq(s0, 3)), (0, True)), 1)",
+                    "Ne(Piecewise((1, Eq(s0, 4)), (0, True)), 1)",
+                ],
+                [
+                    "Eq(Piecewise((1, Eq(s0, 3)), (0, True)), 1)",
+                    "Ne(Piecewise((1, Eq(s0, 4)), (0, True)), 1)",
+                    "Ne(Piecewise((1, Eq(s0, 5)), (0, True)), 1)",
+                ],
+            ],
         )
 
     def test_invalid_input_global(self) -> None:
