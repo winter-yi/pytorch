@@ -13,7 +13,11 @@ from torch.testing._internal.common_dtype import (
     all_types_and,
     all_types_and_complex_and,
 )
-from torch.testing._internal.common_utils import TEST_SCIPY, TEST_WITH_ROCM
+from torch.testing._internal.common_utils import (
+    skipIfTorchDynamo,
+    TEST_SCIPY,
+    TEST_WITH_ROCM,
+)
 from torch.testing._internal.opinfo.core import (
     DecorateInfo,
     ErrorInput,
@@ -762,7 +766,8 @@ python_ref_db: List[OpInfo] = [
                 precisionOverride({torch.float: 2e-4}),
                 "TestFFT",
                 "test_reference_nd",
-            )
+            ),
+            DecorateInfo(skipIfTorchDynamo(), "TestCommon", "test_out_warning"),
         ],
     ),
     SpectralFuncPythonRefInfo(
