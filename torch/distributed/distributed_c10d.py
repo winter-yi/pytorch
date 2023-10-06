@@ -420,6 +420,8 @@ _pg_backend_config: Dict[ProcessGroup, str] = {}
 _group_count = 0
 _tags_to_pg: Dict[str, List[ProcessGroup]] = {}
 _pg_to_tag: Dict[ProcessGroup, str] = {}
+# map of pg_name to ranks include pgs that current rank is not member of it
+_full_pg_cache: Dict[str, List[int]] = {}
 
 
 class _World:
@@ -524,23 +526,44 @@ class _World:
         return self._pg_default_device
 
     @property
+    def full_pg_cache(self) -> Dict[str, List[int]]:
+        global _full_pg_cache
+        return _full_pg_cache
+
+    @property
     def pg_config_info(self) -> List[Dict[str, Union[int, str]]]:
         """
         Returns a list of dict with process groups and backends with their unique IDs
         and configurations (types and ranks).
         """
         config_info = []
-        for pg, backend in self.pg_map.items():
-            # backend is a tuple with the first element being the backend type ("nccl", etc.)
-            backend_type = Backend.backend_type_map[backend[0]]
-            config_info.append(
-                {
-                    "pg_id": pg._id(),
-                    "backend_id": pg._backend_id(backend_type),
-                    "backend_config": self.pg_backend_config[pg],
-                    "ranks": self.pg_group_ranks[pg],
-                }
-            )
+        pg_parallel = len(self.pg_map) == len(self.full_pg_cache)
+        for pg_name, ranks in self.full_pg_cache.items():
+            if pg_parallel and pg_name not in self.pg_names.values():
+                config_info.append(
+                    {
+                        "pg_id": -1,
+                        "pg_name": pg_name,
+                        "backend_id": -1,
+                        "backend_config": None,
+                        "ranks": ranks,
+                    }
+                )
+            else:
+                for pg, backend in self.pg_map.items():
+                    if pg_name != self.pg_names[pg]:
+                        continue
+                    # backend is a tuple with the first element being the backend type ("nccl", etc.)
+                    backend_type = Backend.backend_type_map[backend[0]]
+                    config_info.append(
+                        {
+                            "pg_id": pg._id(),
+                            "pg_name": self.pg_names[pg],
+                            "backend_id": pg._backend_id(backend_type),
+                            "backend_config": self.pg_backend_config[pg],
+                            "ranks": self.pg_group_ranks[pg],
+                        }
+                    )
         return config_info
 
 
@@ -1230,6 +1253,7 @@ def _new_process_group_helper(
 
     # The list of group ranks is empty if we're creating the default group.
     is_default_group = len(global_ranks_in_group) == 0
+    _world.full_pg_cache[group_name] = global_ranks_in_group
 
     # If this is a subgroup (which means group_ranks is specified),
     # we check if the current process is a member of the new group.
@@ -1386,6 +1410,8 @@ def destroy_process_group(group: Optional[ProcessGroup] = None):
     global _world
 
     if group == GroupMember.NON_GROUP_MEMBER:
+        #TODO: any impact if not clear full_pg_cache? we don't know pg_name of non-group-member pg
+        #del _world.full_pg_cache[pg_name]
         return
 
     if group is None:
@@ -1418,6 +1444,7 @@ def destroy_process_group(group: Optional[ProcessGroup] = None):
         _world.tags_to_pg.clear()
         _world.pg_coalesce_state.clear()
         _world.pg_default_device.clear()
+        _world.full_pg_cache.clear()
 
         # when process group doesn't have an explicit name (only WORLD (default)
         # process group can have an explicit name), we use global _world.group_count
