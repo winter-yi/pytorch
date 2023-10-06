@@ -44,6 +44,7 @@ from ..guards import GuardBuilder, make_dupe_guard
 from ..side_effects import SideEffects
 from ..source import (
     AttrSource,
+    ConstantGetItemSource,
     ConstantSource,
     ConvertIntSource,
     GetItemSource,
@@ -502,7 +503,7 @@ class VariableBuilder:
             keywords_source = AttrSource(self.get_source(), "keywords")
             for k, v in value.keywords.items():
                 keywords[k] = VariableBuilder(
-                    self.tx, GetItemSource(keywords_source, k)
+                    self.tx, ConstantGetItemSource(keywords_source, k)
                 )(v)
 
             guards = {
@@ -510,7 +511,6 @@ class VariableBuilder:
                 keywords_source.make_guard(GuardBuilder.DICT_KEYS),
                 args_source.make_guard(GuardBuilder.LIST_LENGTH),
             }
-
             return FunctoolsPartialVariable(
                 func_obj, args, keywords, original=value, guards=guards
             )
