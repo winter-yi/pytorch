@@ -34,6 +34,13 @@ import torch
 import torch._inductor.test_operators
 import torch.distributed
 import torch.utils._content_store
+from .utils import getfile
+
+from .variables.functions import (
+    NestedUserFunctionVariable,
+    UserFunctionVariable,
+    UserMethodVariable,
+)
 
 
 """
@@ -143,6 +150,11 @@ def _module_dir(m: types.ModuleType):
     return _strip_init_py(m.__file__)
 
 
+FUNC_INLINELIST = {
+    "torch.autograd.function.once_differentiable",
+}
+
+
 # Force inline functions in these files, even the files is in *_SKIPLIST.
 FILENAME_INLINELIST = {
     "torch.nn.modules.container",
@@ -186,16 +198,6 @@ FILENAME_INLINELIST |= {
 }
 
 
-@functools.lru_cache(None)
-def get_filename_inlinelist():
-    inlinelist = set()
-    for f in FILENAME_INLINELIST:
-        inlinelist.add(
-            _module_dir(torch) + f.lstrip("torch.").replace(".", "/") + ".py"
-        )
-    return inlinelist
-
-
 # Force inline functions under these modules, even the modules is in *_SKIPLIST.
 SUBMODULE_INLINELIST = {
     "torch.nn",
@@ -217,6 +219,24 @@ if torch.distributed.is_available():
 
 
 @functools.lru_cache(None)
+def get_func_inlinelist():
+    inlinelist = set()
+    for f in FUNC_INLINELIST:
+        inlinelist.add(eval(f))
+    return inlinelist
+
+
+@functools.lru_cache(None)
+def get_filename_inlinelist():
+    inlinelist = set()
+    for f in FILENAME_INLINELIST:
+        inlinelist.add(
+            _module_dir(torch) + f.lstrip("torch.").replace(".", "/") + ".py"
+        )
+    return inlinelist
+
+
+@functools.lru_cache(None)
 def get_submodule_inlinelist():
     inlinelist = set()
     for f in SUBMODULE_INLINELIST:
@@ -227,6 +247,8 @@ def get_submodule_inlinelist():
 if TYPE_CHECKING:
     for m in FILENAME_INLINELIST.union(SUBMODULE_INLINELIST):
         importlib.import_module(m)
+    for f in FUNC_INLINELIST:
+        eval(f)  # noqa: F841
 
 
 # skip some standard python builtin libs
@@ -301,7 +323,7 @@ def _check_verbose_inner(filename, allow_torch=False):
         return SkipResult(False, "inlined by default")
 
 
-def check_verbose(filename, allow_torch=False, extra_check=False):
+def check_file(filename, allow_torch=False, extra_check=False):
     result = _check_verbose_inner(filename, allow_torch)
     if extra_check and result.skipped and is_torch_inline_allowed(filename):
         return SkipResult(
@@ -312,8 +334,23 @@ def check_verbose(filename, allow_torch=False, extra_check=False):
         return result
 
 
-def check(filename, allow_torch=False, extra_check=False):
-    return check_verbose(filename, allow_torch, extra_check).skipped
+def check_func(func, allow_torch=False, extra_check=False):
+    if isinstance(
+        func, (UserFunctionVariable, UserMethodVariable, NestedUserFunctionVariable)
+    ):
+        filename = func.get_filename()
+        try:
+            func = func.get_function()
+        except NotImplementedError:
+            func = None
+    else:
+        filename = getfile(func)
+    if func in get_func_inlinelist():
+        return SkipResult(
+            False,
+            "inlined according skipfiles.FUNC_INLINELIST",
+        )
+    return check_file(filename, allow_torch, extra_check)
 
 
 # skip common third party libs
