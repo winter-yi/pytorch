@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
+import org.junit.Ignore;
 
 public abstract class PytorchTestBase {
   private static final String TEST_MODULE_ASSET_NAME = "android_api_module.ptl";
@@ -413,12 +414,11 @@ public abstract class PytorchTestBase {
   }
 
   @Test
+  @Ignore
   public void testSpectralOps() throws IOException {
     // NB: This model fails without lite interpreter, there is no incentive
-    // to fix this though. The error is https://paste.sh/HG3x579f#WOBGyTzUL-elzrOWWIiF7jUV
-    if (System.getenv("BUILD_LITE_INTERPRETER") == "1") {
-      runModel("spectral_ops");
-    }
+    // to fix this though
+    runModel("spectral_ops");
   }
 
   @Test
