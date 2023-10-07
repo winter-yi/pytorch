@@ -42,7 +42,7 @@ android {
         buildConfigField("boolean", "NATIVE_BUILD", 'false')
         buildConfigField("boolean", "USE_VULKAN_DEVICE", 'false')
         buildConfigField(
-                "String",
+                "int",
                 "BUILD_LITE_INTERPRETER",
                 System.env.BUILD_LITE_INTERPRETER != null ? System.env.BUILD_LITE_INTERPRETER : "1"
         )

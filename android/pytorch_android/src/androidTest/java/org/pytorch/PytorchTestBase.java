@@ -416,8 +416,8 @@ public abstract class PytorchTestBase {
   @Test
   @Ignore
   public void testSpectralOps() throws IOException {
-    // NB: This model fails without lite interpreter, there is no incentive
-    // to fix this though
+    // NB: This model fails without lite interpreter.  The error is as follows:
+    // RuntimeError: stft requires the return_complex parameter be given for real inputs
     runModel("spectral_ops");
   }
 

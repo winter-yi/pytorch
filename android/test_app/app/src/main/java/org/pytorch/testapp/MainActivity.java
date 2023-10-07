@@ -130,7 +130,7 @@ public class MainActivity extends AppCompatActivity {
       mInputTensor =
           Tensor.fromBlob(
               mInputTensorBuffer, BuildConfig.INPUT_TENSOR_SHAPE, MemoryFormat.CHANNELS_LAST);
-      if (BuildConfig.BUILD_LITE_INTERPRETER.equals("1")) {
+      if (BuildConfig.BUILD_LITE_INTERPRETER == 1) {
         LitePyTorchAndroid.setNumThreads(1);
         mModule = BuildConfig.USE_VULKAN_DEVICE
                 ? LitePyTorchAndroid.loadModuleFromAsset(
