@@ -28,7 +28,7 @@ import weakref
 from contextlib import contextmanager
 from functools import lru_cache, wraps
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, ClassVar, Dict, Optional, Tuple, Union
 
 try:
     import numpy as np
@@ -571,6 +571,7 @@ class CleanupHook:
 
 class CleanupManager(ExactWeakKeyDictionary):
     count = 0
+    instance: ClassVar["CleanupManager"]
 
     def _remove_id(self, idx):
         for hook in self.values[idx]:

@@ -345,9 +345,9 @@ class GraphState:
 class GraphModuleSerializer:
     def __init__(
         self,
-        graph_signature: ep.ExportGraphSignature,
-        call_spec: torch._export.exported_program.CallSpec,
-        module_call_graph: List[ep.ModuleCallEntry]
+        graph_signature: Optional[ep.ExportGraphSignature],
+        call_spec: Optional[torch._export.exported_program.CallSpec],
+        module_call_graph: Optional[List[ep.ModuleCallEntry]]
     ):
         self.graph_state = GraphState()
         self.graph_signature = graph_signature
@@ -837,6 +837,9 @@ class GraphModuleSerializer:
 
     def serialize(self, graph_module: torch.fx.GraphModule) -> GraphModule:
         graph = self.serialize_graph(graph_module)
+        assert self.graph_signature is not None
+        assert self.call_spec is not None
+        assert self.module_call_graph is not None
 
         return GraphModule(
             graph=graph,
