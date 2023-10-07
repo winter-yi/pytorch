@@ -148,7 +148,7 @@ public class MainActivity extends AppCompatActivity {
       }
 
       Method setNumThreads = ptAndroid.getMethod("setNumThreads", int.class);
-      setNumThreads.invoke(1);
+      setNumThreads.invoke(null,1);
 
       Method loadModuleFromAsset = ptAndroid.getMethod(
               "loadModuleFromAsset",
@@ -157,8 +157,10 @@ public class MainActivity extends AppCompatActivity {
               Device.class
               );
       mModule = (Module) (BuildConfig.USE_VULKAN_DEVICE
-                    ? loadModuleFromAsset.invoke(getAssets(), BuildConfig.MODULE_ASSET_NAME, Device.VULKAN)
-                    : loadModuleFromAsset.invoke(getAssets(), BuildConfig.MODULE_ASSET_NAME, Device.CPU));
+                    ? loadModuleFromAsset.invoke(
+                            null, getAssets(), BuildConfig.MODULE_ASSET_NAME, Device.VULKAN)
+                    : loadModuleFromAsset.invoke(
+                            null, getAssets(), BuildConfig.MODULE_ASSET_NAME, Device.CPU));
     }
 
     final long startTime = SystemClock.elapsedRealtime();
