@@ -191,4 +191,10 @@ def _create_chunk_dtensor(
     # HSDP placements: [Replicate(), Shard(0)]
     placements = [Replicate() for _ in range(device_mesh.ndim)]
     placements[-1] = shard_placement  # type: ignore[call-overload]
-    return DTensor.from_local(local_tensor, device_mesh, placements)
+    return DTensor.from_local(
+        local_tensor,
+        device_mesh,
+        placements,
+        shape=tensor.size(),
+        stride=tensor.stride(),
+    )
