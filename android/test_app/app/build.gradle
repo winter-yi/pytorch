@@ -63,14 +63,15 @@ android {
         mnet {
             dimension "model"
             applicationIdSuffix ".mnet"
-            buildConfigField("String", "MODULE_ASSET_NAME", "\"mnet.pt\"")
+            buildConfigField("String", "MODULE_ASSET_NAME", "\"mobilenet_v2.ptl\"")
             addManifestPlaceholders([APP_NAME: "MNET"])
             buildConfigField("String", "LOGCAT_TAG", "\"pytorch-mnet\"")
         }
+        // NB: This is not working atm https://github.com/pytorch/pytorch/issues/102966
         mnetVulkan {
             dimension "model"
             applicationIdSuffix ".mnet_vulkan"
-            buildConfigField("String", "MODULE_ASSET_NAME", "\"mnet_vulkan.pt\"")
+            buildConfigField("String", "MODULE_ASSET_NAME", "\"mobilenet_v2_vulkan.ptl\"")
             buildConfigField("boolean", "USE_VULKAN_DEVICE", 'true')
             addManifestPlaceholders([APP_NAME: "MNET_VULKAN"])
             buildConfigField("String", "LOGCAT_TAG", "\"pytorch-mnet-vulkan\"")
@@ -78,7 +79,7 @@ android {
         resnet18 {
             dimension "model"
             applicationIdSuffix ".resnet18"
-            buildConfigField("String", "MODULE_ASSET_NAME", "\"resnet18.pt\"")
+            buildConfigField("String", "MODULE_ASSET_NAME", "\"resnet18.ptl\"")
             addManifestPlaceholders([APP_NAME: "RN18"])
             buildConfigField("String", "LOGCAT_TAG", "\"pytorch-resnet18\"")
         }

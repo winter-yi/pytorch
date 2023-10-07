@@ -23,12 +23,12 @@ public final class PyTorchAndroid {
    */
   public static Module loadModuleFromAsset(
       final AssetManager assetManager, final String assetName, final Device device) {
-    return new Module(new NativePeer(assetName, assetManager, device));
+    return new Module(new LiteNativePeer(assetName, assetManager, device));
   }
 
   public static Module loadModuleFromAsset(
       final AssetManager assetManager, final String assetName) {
-    return new Module(new NativePeer(assetName, assetManager, Device.CPU));
+    return new Module(new LiteNativePeer(assetName, assetManager, Device.CPU));
   }
 
   /**
