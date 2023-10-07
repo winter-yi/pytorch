@@ -547,6 +547,17 @@ Tensor pow_scalar_tensor(const Scalar& self, const Tensor& other) {
       other, self, c10::optional<Scalar>(), VK_KERNEL(pow_scalar_tensor));
 }
 
+Tensor floor_divide_scalar(const Tensor& self, const Scalar& other) {
+  return binary_op_scalar(
+      self, 1.0 / other.to<float>(), c10::optional<Scalar>(), VK_KERNEL(floor_mul_scalar));
+}
+
+Tensor& floor_divide_scalar_(Tensor& self, const Scalar& other) {
+  return binary_op_scalar_(
+      self, 1.0 / other.to<float>(), c10::optional<Scalar>(),
+      VK_KERNEL(floor_mul_scalar_));
+}
+
 #ifdef USE_VULKAN_API
 
 TORCH_LIBRARY_IMPL(aten, Vulkan, m) {
@@ -574,6 +585,10 @@ TORCH_LIBRARY_IMPL(aten, Vulkan, m) {
   m.impl(
       TORCH_SELECTIVE_NAME("aten::pow_.Scalar"), TORCH_FN(pow_tensor_scalar_));
   m.impl(TORCH_SELECTIVE_NAME("aten::pow.Scalar"), TORCH_FN(pow_scalar_tensor));
+  m.impl(TORCH_SELECTIVE_NAME("aten::floor_divide.Scalar"),
+      TORCH_FN(floor_divide_scalar));
+  m.impl(TORCH_SELECTIVE_NAME("aten::floor_divide_.Scalar"),
+      TORCH_FN(floor_divide_scalar_));
 }
 
 #endif /* USE_VULKAN_API */
