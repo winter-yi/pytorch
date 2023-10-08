@@ -2337,23 +2337,32 @@ class MutationLayout(Layout):
         if isinstance(src, TensorBox):
             src = src.data
 
-        # We copy the contents of src into dst. In most cases this should
-        # be fused into a single kernel by the scheduler.
-        # NOTE: We cannot change src's layout to mutate dst directly as this
-        # would alias src to dst, which is not correct as further mutations to
-        # dst would effect users of src.
-        src.realize_hint()
+        if src.is_user_of(dst.get_name()) and (
+            isinstance(src.data, Buffer)
+            and isinstance(src.get_layout(), FlexibleLayout)
+        ):
+            # Skip the copy when
+            # 1. If src is_user_of dst, we suppose it has been realize in previous
+            #    step of: V.graph.mark_buffer_mutated(dst.get_name())
+            # 2. The src must be FlexibleLayout, since it will be changed to MutationLayout with dst
+            need_copy = False
+        elif not isinstance(src, StorageBox) or src.is_zero_elements():
+            need_copy = True
+        else:
+            src.realize()
+            need_copy = not isinstance(src.get_layout(), FlexibleLayout)
 
-        src = Pointwise.create(
-            device=src.get_device(),
-            dtype=src.get_dtype(),
-            inner_fn=src.make_loader(),
-            ranges=[
-                V.graph.sizevars.guard_equals(a, b)
-                for a, b in zip(src.get_size(), dst.get_size())
-            ],
-        ).data
-        src.realize()
+        if need_copy:
+            src = Pointwise.create(
+                device=src.get_device(),
+                dtype=src.get_dtype(),
+                inner_fn=src.make_loader(),
+                ranges=[
+                    V.graph.sizevars.guard_equals(a, b)
+                    for a, b in zip(src.get_size(), dst.get_size())
+                ],
+            ).data
+            src.realize()
 
         assert isinstance(src.data.layout, FlexibleLayout)
         src.data.layout = MutationLayout(dst)
