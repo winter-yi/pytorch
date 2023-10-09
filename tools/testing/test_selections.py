@@ -54,6 +54,9 @@ class ShardedTest(NamedTuple):
     def get_time(self) -> float:
         return self.time or 0
 
+    def get_pytest_args(self) -> List[str]:
+        return ["-k", "TestC"]
+
 
 class ShardJob:
     def __init__(self) -> None:

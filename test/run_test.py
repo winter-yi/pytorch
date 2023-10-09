@@ -540,6 +540,8 @@ def run_test(
                 is_distributed_test=is_distributed_test,
             )
         )
+        if isinstance(test_module, ShardedTest):
+            unittest_args.extend(test_module.get_pytest_args())
         unittest_args = [arg if arg != "-f" else "-x" for arg in unittest_args]
 
     # TODO: These features are not available for C++ test yet
