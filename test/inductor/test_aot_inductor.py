@@ -127,7 +127,9 @@ class AOTInductorModelRunner:
         list_output_tensors = []
         for example_inputs in list_example_inputs:
             list_output_tensors.append(
-                AOTInductorModelRunner.run_compiled(optimized, call_spec, example_inputs)
+                AOTInductorModelRunner.run_compiled(
+                    optimized, call_spec, example_inputs
+                )
             )
         return list_output_tensors
 

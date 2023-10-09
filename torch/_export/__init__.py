@@ -27,7 +27,7 @@ from torch._decomp import core_aten_decompositions, get_decompositions
 from torch._dispatch.python import enable_python_dispatcher
 from torch._dynamo.exc import UserError, UserErrorType
 from torch._dynamo.source import ConstantSource
-from torch._export.exported_program import ModuleCallEntry, ModuleCallSignature, CallSpec
+from torch._export.exported_program import ModuleCallEntry, ModuleCallSignature
 from torch._export.passes.collect_tracepoints_pass import CollectTracepointsPass
 from torch._functorch.aot_autograd import aot_export_module
 from torch._functorch.eager_transforms import functionalize
@@ -238,7 +238,7 @@ def export__RC__(
     See `export` for documentation of `f`, `args`, `kwargs` and return.
     """
     constraints = _process_dynamic_shapes(f, args, kwargs, dynamic_shapes)
-    return export(f, args, kwargs, constraints=constraints)
+    return _export(f, args, kwargs, constraints=constraints)
 
 
 def dynamic_dim(t: torch.Tensor, index: int, debug_name: Optional[str] = None):
@@ -466,7 +466,11 @@ def _export_to_torch_ir(
     constraints: Optional[List[Constraint]] = None,
     *,
     preserve_module_call_signature: Tuple[str, ...] = (),
-) -> ExportedProgram:
+) -> torch.fx.GraphModule:
+    """
+    Traces either an nn.Module's forward function or just a callable with PyTorch
+    operations inside and produce a torch.fx.GraphModule in torch IR.
+    """
 
     if constraints is not None:
         warnings.warn(
@@ -476,27 +480,7 @@ def _export_to_torch_ir(
             DeprecationWarning,
             stacklevel=2,
         )
-    return _export(
-        f,
-        args,
-        kwargs,
-        constraints,
-        preserve_module_call_signature=preserve_module_call_signature,
-    )
 
-
-def _export(
-    f: Callable,
-    args: Tuple[Any, ...],
-    kwargs: Optional[Dict[str, Any]] = None,
-    constraints: Optional[List[Constraint]] = None,
-    *,
-    preserve_module_call_signature: Tuple[str, ...] = (),
-) -> ExportedProgram:
-    """
-    Traces either an nn.Module's forward function or just a callable with PyTorch
-    operations inside and produce a torch.fx.GraphModule in torch IR.
-    """
     constraints = constraints or []
     kwargs = kwargs or {}
 
@@ -548,7 +532,34 @@ def _export(
     gm_torch_level.meta["module_call_specs"] = module_call_specs
     return gm_torch_level
 
+
 def export(
+    f: Callable,
+    args: Tuple[Any, ...],
+    kwargs: Optional[Dict[str, Any]] = None,
+    constraints: Optional[List[Constraint]] = None,
+    *,
+    preserve_module_call_signature: Tuple[str, ...] = (),
+) -> ExportedProgram:
+
+    if constraints is not None:
+        warnings.warn(
+            "Using `constraints` to specify dynamic shapes for export is DEPRECATED "
+            "and will not be supported in the future. "
+            "Please use `dynamic_shapes` instead (see docs on `torch.export.export`).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    return _export(
+        f,
+        args,
+        kwargs,
+        constraints,
+        preserve_module_call_signature=preserve_module_call_signature,
+    )
+
+
+def _export(
     f: Callable,
     args: Tuple[Any, ...],
     kwargs: Optional[Dict[str, Any]] = None,
@@ -879,7 +890,7 @@ def aot_compile(
     dynamic_shapes: Optional[Dict[str, Any]] = None,
     options: Optional[Dict[str, Any]] = None,
     remove_runtime_assertions: bool = False,
-) -> str:
+) -> Tuple[str, CallSpec]:
     """
     Note: this function is not stable yet
 
@@ -922,11 +933,6 @@ def aot_compile(
     flat_example_inputs, _ = pytree.tree_flatten(combine_args_kwargs(args, kwargs))
     gm.graph.set_codegen(torch.fx.CodeGen())  # type: ignore[attr-defined]
 
-    options = (
-        {"freezing": True}
-        if options is None
-        else {**options, "freezing": True}
-    )
     with torch.no_grad():
         so_path = torch._inductor.aot_compile(gm, flat_example_inputs, options)  # type: ignore[arg-type]
 

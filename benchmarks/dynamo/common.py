@@ -1161,7 +1161,7 @@ class AOTInductorModelCache:
             example_outputs = model(*example_args, **example_kwargs)
             _register_dataclass_output_as_pytree(example_outputs)
 
-            so_path, exported = torch._export.aot_compile(
+            so_path, call_spec = torch._export.aot_compile(
                 model, example_args, example_kwargs
             )
 
@@ -1175,13 +1175,13 @@ class AOTInductorModelCache:
 
             value = {
                 "module": module,
-                "exported": exported,
+                "call_spec": call_spec,
             }
             cls.cache[key] = value
 
         return (
             cls.cache[key]["module"],
-            cls.cache[key]["exported"],
+            cls.cache[key]["call_spec"],
         )
 
 
@@ -1200,15 +1200,15 @@ def export(model, example_inputs):
 
 
 def export_aot_inductor(model, example_inputs):
-    module, exported = AOTInductorModelCache.load(model, example_inputs)
+    module, call_spec = AOTInductorModelCache.load(model, example_inputs)
 
     def opt_aot_inductor(_, example_inputs, collect_outputs=False):
         example_args, example_kwargs = _normalize_bench_inputs(example_inputs)
         flat_example_inputs = fx_pytree.tree_flatten_spec(
-            (example_args, example_kwargs), exported.call_spec.in_spec
+            (example_args, example_kwargs), call_spec.in_spec
         )
         output_tensors = module.run(flat_example_inputs)
-        return pytree.tree_unflatten(output_tensors, exported.call_spec.out_spec)
+        return pytree.tree_unflatten(output_tensors, call_spec.out_spec)
 
     return opt_aot_inductor
 

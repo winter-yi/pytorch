@@ -37,7 +37,6 @@ from .debug import DebugContext
 from .decomposition import select_decomp_table
 from .fx_passes.joint_graph import joint_graph_passes
 from .fx_passes.post_grad import post_grad_passes, view_to_reshape
-from .fx_passes.pre_grad import pre_grad_passes
 from .graph import GraphLowering
 from .ir import ExternKernelNode
 from .pattern_matcher import clone_graph
@@ -1018,12 +1017,6 @@ def compile_fx(
                 recursive_compile_fx,
             )
 
-        if not config.from_export:
-            # Since handle_dynamo_export_graph will trigger compile_fx again,
-            # Move these passes after handle_dynamo_export_graph to avoid repeated calls.
-            # If we come from export, the graph is already in aten IR, so pre-grad passes is no-op.
-            model_ = pre_grad_passes(model_, example_inputs_)
-
     if any(isinstance(x, (list, tuple, dict)) for x in example_inputs_):
         return flatten_graph_inputs(
             model_,
@@ -1055,6 +1048,35 @@ def compile_fx(
         num_rng_seed_offset_inputs = 2 if functorch_config.functionalize_rng_ops else 0
         fixed = len(example_inputs) - num_example_inputs - num_rng_seed_offset_inputs
         user_visible_outputs = set()
+
+        if V.aot_compilation is True:
+            # If we're compiling with AOTInductor, we want to unlift the
+            # params/buffers because further down the line, we handle these
+            # values differently than normal inputs (we store them in a
+            # different file).
+            from torch._inductor.freezing import replace_params_with_constants
+
+            fw_metadata = torch._guards.TracingContext.get().fw_metadata
+            params_flat = torch._guards.TracingContext.get().params_flat
+            assert fw_metadata is not None and params_flat is not None
+
+            preserved_arg_indices = replace_params_with_constants(
+                model, params_flat, fw_metadata
+            )
+
+            example_inputs = [example_inputs[ind] for ind in preserved_arg_indices]
+            fixed = len(preserved_arg_indices) - num_example_inputs
+
+            fake_mode = detect_fake_mode(example_inputs)
+
+            # Constant params will be real tensors, not fake
+            tracing_context = torch._guards.TracingContext.get()
+            if tracing_context is not None:
+                params_flat = tracing_context.params_flat
+                assert params_flat is not None
+                for i in range(len(params_flat)):
+                    if i not in preserved_arg_indices:
+                        params_flat[i] = None
 
         if config.keep_output_stride:
             *_, model_outputs_node = model.graph.nodes
@@ -1105,16 +1127,19 @@ def compile_fx(
                 if isinstance(n, torch.fx.Node)
             }
 
-        return inner_compile(
-            model,
-            example_inputs,
-            num_fixed=fixed,
-            cudagraphs=cudagraphs,
-            graph_id=graph_id,
-            is_inference=is_inference,
-            boxed_forward_device_index=forward_device,
-            user_visible_outputs=user_visible_outputs,
-        )
+        fake_mode = detect_fake_mode(example_inputs)
+
+        with mock.patch.object(fake_mode, "allow_non_fake_inputs", True):
+            return inner_compile(
+                model,
+                example_inputs,
+                num_fixed=fixed,
+                cudagraphs=cudagraphs,
+                graph_id=graph_id,
+                is_inference=is_inference,
+                boxed_forward_device_index=forward_device,
+                user_visible_outputs=user_visible_outputs,
+            )
 
     fw_compiler = functools.partial(fw_compiler_base, is_inference=False)
 
@@ -1160,10 +1185,6 @@ def compile_fx(
     tracing_context = (
         torch._guards.TracingContext.get() or torch._guards.TracingContext(fake_mode)
     )
-
-    if config.from_export and V.aot_compilation is True:
-        with V.set_fake_mode(fake_mode), compiled_autograd.disable():
-            return inference_compiler(model_, example_inputs_)
 
     with V.set_fake_mode(fake_mode), torch._guards.tracing(  # type: ignore[call-arg]
         tracing_context
