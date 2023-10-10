@@ -3,6 +3,9 @@
 #include <ATen/core/TensorBody.h>
 #include <ATen/cuda/CUDAConfig.h>
 #include <ATen/native/ConvUtils.h>
+#include <ATen/native/transformers/cuda/sdp_utils.h>
+#include <ATen/native/transformers/sdp_utils_cpp.h>
+#include <autograd/python_variable.h>
 #include <c10/core/Device.h>
 #include <c10/core/TensorImpl.h>
 #include <c10/util/UniqueVoidPtr.h>
@@ -872,6 +875,71 @@ PyObject* THCPModule_cudaGetSyncDebugMode(PyObject* self, PyObject* noargs) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Scaled Dot Product Attention utilities
+////////////////////////////////////////////////////////////////////////////////
+
+static void registerSDPAUtilities(PyObject* module) {
+  // Add _SDPAParams and helper methods class to torch._C
+  auto m = py::handle(module).cast<py::module>();
+  py::class_<sdp::sdp_params>(m, "_SDPAParams")
+      // .def(py::init<const at::Tensor, const at::Tensor, const at::Tensor,
+      // const c10::optional<at::Tensor>, double, bool>())
+      .def(py::init([](py::object query,
+                       py::object key,
+                       py::object value,
+                       py::object attn_mask,
+                       double dropout,
+                       bool is_causal) {
+        // TODO: how do we handle these with more grace than seg fault
+        // TODO: (Other way ?)Check if pyobj attn_mask is none if not cast
+        if (attn_mask.ptr() == Py_None) {
+          return sdp::sdp_params{
+              THPVariable_Unpack(query.ptr()),
+              THPVariable_Unpack(key.ptr()),
+              THPVariable_Unpack(value.ptr()),
+              c10::nullopt,
+              dropout,
+              is_causal};
+        }
+        return sdp::sdp_params{
+            THPVariable_Unpack(query.ptr()),
+            THPVariable_Unpack(key.ptr()),
+            THPVariable_Unpack(value.ptr()),
+            THPVariable_Unpack(attn_mask.ptr()),
+            dropout,
+            is_causal};
+      }))
+      // TODO Add nice repr
+      // .def_readonly("query", &sdp::sdp_params::query)
+      // .def_readonly("key", &sdp::sdp_params::key)
+      // .def_readonly("value", &sdp::sdp_params::value)
+      .def_readonly("attn_mask", &sdp::sdp_params::attn_mask)
+      .def_readonly("dropout", &sdp::sdp_params::dropout)
+      .def_readonly("is_causal", &sdp::sdp_params::is_causal);
+
+  py::enum_<sdp::SDPBackend>(
+      m,
+      "SDPBackend",
+      py::arithmetic(),
+      "Enum class for the scaled dot product attention backends\n\n... warning:: This class is in beta and subject to change.")
+      .value("ERROR", sdp::SDPBackend::error)
+      .value("MATH", sdp::SDPBackend::math)
+      .value("FLASH_ATTENTION", sdp::SDPBackend::flash_attention)
+      .value("EFFICIENT_ATTENTION", sdp::SDPBackend::efficient_attention);
+
+  m.def(
+      "_can_use_flash_attention",
+      [](const sdp::sdp_params& params, bool debug) {
+        return sdp::can_use_flash_attention(params, debug);
+      });
+  m.def(
+      "_can_use_mem_efficient_attention",
+      [](const sdp::sdp_params& params, bool debug) {
+        return sdp::can_use_mem_efficient_attention(params, debug);
+      });
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Cuda module initialization
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1523,6 +1591,7 @@ void initModule(PyObject* module) {
 #endif
   registerCudaDeviceProperties(module);
   registerCudaPluggableAllocator(module);
+  registerSDPAUtilities(module);
 }
 
 } // namespace torch::cuda
