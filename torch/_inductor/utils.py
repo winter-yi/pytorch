@@ -1134,16 +1134,17 @@ def try_find_schema(schemas, args, kwargs):
 
 @functools.lru_cache(None)
 def get_device_tflops(dtype):
-    from triton.testing import get_max_simd_tflops, get_max_tensorcore_tflops
+    from triton.testing import get_max_simd_tflops, get_max_tensorcore_tflops, nvsmi
 
+    cur_sm_clock = nvsmi(["clocks.current.sm"])[0]
     assert dtype in (torch.float16, torch.bfloat16, torch.float32)
     if dtype in (torch.float16, torch.bfloat16):
-        return get_max_tensorcore_tflops(dtype)
+        return get_max_tensorcore_tflops(dtype, cur_sm_clock)
 
     if torch.backends.cuda.matmul.allow_tf32:
-        return get_max_tensorcore_tflops(torch.float32)
+        return get_max_tensorcore_tflops(torch.float32, cur_sm_clock)
     else:
-        return get_max_simd_tflops(torch.float32)
+        return get_max_simd_tflops(torch.float32, cur_sm_clock)
 
 
 @functools.lru_cache(None)
